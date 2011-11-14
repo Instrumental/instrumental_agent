@@ -20,6 +20,7 @@ module TestServer
         EventMachine.stop_server sig
       }
       @sig = nil
+      clear_buffer!
     end
   end
 
@@ -48,6 +49,19 @@ module TestServer
     connections.last
   end
 
+  def self.buffer
+    @buffer ||= []
+  end
+
+  def self.clear_buffer!
+    TestServer.buffer.clear
+  end
+
+  def self.last_message
+    buffer.last
+  end
+
+
   def post_init
     TestServer.add_connection(self)
   end
@@ -60,23 +74,19 @@ module TestServer
     TestServer.remove_connection(self)
   end
 
-  def last_message
-    buffer.last
-  end
-
   def buffer
-    @buffer ||= []
-    @buffer.dup
+    TestServer.buffer
   end
 
-  def clear_buffer!
-    @buffer = []
+  def with_buffer(&block)
+    CMUTEX.synchronize do
+      yield TestServer.buffer
+    end
   end
 
   def buffer_response(dt)
-    @buffer ||= []
     dt.split(/\n/).each do |measurement|
-      @buffer << measurement
+      TestServer.buffer << measurement
     end
     dt
   end

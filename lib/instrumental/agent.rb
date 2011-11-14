@@ -9,7 +9,7 @@ require 'logger'
 module Instrumental
   class Agent
     attr_accessor :host, :port
-    attr_reader :connection, :enabled
+    attr_reader :connection, :enabled, :attempt_reconnect
     
     def self.start_reactor
       unless EM.reactor_running?
@@ -83,11 +83,13 @@ module Instrumental
 
       def unbind
         @connected = false
-        @failures = @failures.to_i + 1
-        delay = [@failures ** BACKOFF / 10.to_f, MAX_RECONNECT_DELAY].min
-        logger.info "disconnected, reconnect in #{delay}..."
-        EM::Timer.new(delay) do
-          reconnect(agent.host, agent.port)
+        if agent.attempt_reconnect
+          @failures = @failures.to_i + 1
+          delay = [@failures ** BACKOFF / 10.to_f, MAX_RECONNECT_DELAY].min
+          logger.info "disconnected, reconnect in #{delay}..."
+          EM::Timer.new(delay) do
+            reconnect(agent.host, agent.port)
+          end
         end
       end
 
@@ -101,6 +103,7 @@ module Instrumental
       default_options = { :start_reactor => true, :enabled => true }
       options = default_options.merge(options)
       @api_key = api_key
+      @attempt_reconnect = true
       if options[:collector]
         @host, @port = options[:collector].split(':')
         @port = (@port || 8000).to_i
@@ -137,6 +140,20 @@ module Instrumental
     def increment(metric, value = 1, time = Time.now)
       valid?(metric, value, time)
       send_command("increment", metric, value, time.to_i)
+    end
+
+    # Block until all metrics are sent to the server and then close
+    # This WILL block your calling thread
+    #
+    # agent.close
+    def close
+      if connection
+        @attempt_reconnect = false
+        EM.next_tick do
+          connection.close_connection(true)
+        end
+        sleep(0.1) while connected?
+      end
     end
 
     def enabled?

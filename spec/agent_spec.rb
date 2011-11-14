@@ -40,14 +40,14 @@ describe Instrumental::Agent do
   it 'should announce itself including version' do
     subject.gauge('gauge_test', 123)
     EM.next do
-      TestServer.last.buffer.first.should match(/hello.*version/)
+      TestServer.buffer.first.should match(/hello.*version/)
     end
   end
 
   it 'should authenticate using the token' do
     subject.gauge('gauge_test', 123)
     EM.next do
-      TestServer.last.buffer[1].should == "authenticate test_token"
+      TestServer.buffer[1].should == "authenticate test_token"
     end
   end
 
@@ -55,15 +55,25 @@ describe Instrumental::Agent do
     now = Time.now
     subject.gauge('gauge_test', 123)
     EM.next do
-      TestServer.last.buffer.last.should == "gauge gauge_test 123 #{now.to_i}"
+      TestServer.last_message.should == "gauge gauge_test 123 #{now.to_i}"
     end
   end
 
   it 'should report a gauge to the collector with a set time' do
     subject.gauge('gauge_test', 123, 555)
     EM.next do
-      TestServer.last.buffer.last.should == 'gauge gauge_test 123 555'
+      TestServer.last_message.should == 'gauge gauge_test 123 555'
     end
+  end
+
+  it 'should allow closing the connection to the server' do
+    ts = Time.now.to_i
+    1.upto(100) do |i|
+      subject.gauge('flush_test', 100, ts + i)
+    end
+    subject.close
+    TestServer.last_message.should == "gauge flush_test 100 #{ts + 100}"
+    subject.should_not be_connected
   end
 
   it "should automatically reconnect" do
@@ -77,7 +87,7 @@ describe Instrumental::Agent do
       subject.gauge('gauge_test', 444, 555)
     end
     EM.next do
-      TestServer.last.buffer.last.should == 'gauge gauge_test 444 555'
+      TestServer.last_message.should == 'gauge gauge_test 444 555'
     end
   end
 

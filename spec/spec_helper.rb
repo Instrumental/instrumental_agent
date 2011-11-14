@@ -30,19 +30,15 @@ module EM
 
   def self.next(&block)
     EM.wait_for_events
-    mtx = Mutex.new
     exc = nil
     EM.next_tick do
-      mtx.synchronize {
         begin
           yield
         rescue Exception => e
           exc = e
         end
-      }
     end
     EM.wait_for_events
-    mtx.lock
     raise exc if exc
     true
   end
@@ -50,12 +46,9 @@ module EM
   def self.wait_for_events
     raise "Reactor is not running" unless EM.reactor_running?
     while EM.reactor_running? && !(@next_tick_queue && @next_tick_queue.empty? && @timers && @timers.empty?)
-      sleep(0.01) # This value is REALLY important
-                  # Too low and it doesn't allow 
-                  # local socket events to finish 
-                  # processing
-                  # Too high and it makes the tests 
-                  # slow.  
+      sleep(0.01) # Give EventMachine a chance to process in reactor thread
+                  # Do not use in cases where giving EM time to process 
+                  # causes more .next_tick or timers to be pushed on to the loop.
     end
     raise @wrapped_exception if @wrapped_exception
   end
