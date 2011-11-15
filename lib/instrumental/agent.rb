@@ -39,7 +39,10 @@ module Instrumental
     #  Instrumental::Agent.new(API_KEY)
     #  Instrumental::Agent.new(API_KEY, :collector => 'hostname:port')
     def initialize(api_key, options = {})
-      default_options = { :enabled => true }
+      default_options = {
+        :enabled     => true,
+        :record_data => true,
+      }
       options = default_options.merge(options)
       @api_key = api_key
       if options[:collector]
@@ -54,7 +57,7 @@ module Instrumental
       if @enabled
         @failures = 0
         @queue = Queue.new
-        start_connection_thread
+        start_connection_thread(options[:record_data])
       end
     end
 
@@ -124,7 +127,7 @@ module Instrumental
       end
     end
 
-    def start_connection_thread
+    def start_connection_thread(record_data)
       @thread = Thread.new do
         begin
           @socket = TCPSocket.new(host, port)
@@ -146,7 +149,7 @@ module Instrumental
               Thread.exit
             else
               logger.debug "Sending: #{command_and_args.chomp}"
-              @socket.puts command_and_args
+              @socket.puts command_and_args if record_data
             end
           end
         rescue Exception => err
