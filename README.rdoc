@@ -13,10 +13,6 @@ initialize the agent with your API key, found in the Docs section.
 
   I = Instrumental::Agent.new('YOUR_API_KEY', :enabled => Rails.env.production?)
 
-If you're already using EventMachine elsewhere, or are hosted on Heroku, then you will need to disable the reactor loop startup.
-
-  I = Instrumental::Agent.new('YOUR_API_KEY', :enabled => Rails.env.production?, :start_reactor => false)
-
 Now you can begin to use Instrumental to track your application.
 
   I.gauge('load', 1.23)
