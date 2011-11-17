@@ -28,6 +28,46 @@ describe Instrumental::Agent, "disabled" do
 
 end
 
+describe Instrumental::Agent, "enabled in test_mode" do
+  before do
+    @server = TestServer.new
+    @agent = Instrumental::Agent.new('test_token', :collector => @server.host_and_port, :test_mode => true)
+  end
+
+  after do
+    @server.stop
+  end
+
+  it "should connect to the server" do
+    wait
+    @server.connect_count.should == 1
+  end
+
+  it "should announce itself, and include version and test_mode flag" do
+    wait
+    @server.commands[0].should =~ /hello .*version .*test_mode true/
+  end
+
+  it "should authenticate using the token" do
+    wait
+    @server.commands[1].should == "authenticate test_token"
+  end
+
+  it "should report a gauge" do
+    now = Time.now
+    @agent.gauge('gauge_test', 123)
+    wait
+    @server.commands.last.should == "gauge gauge_test 123 #{now.to_i}"
+  end
+
+  it "should report an increment" do
+    now = Time.now
+    @agent.increment("increment_test")
+    wait
+    @server.commands.last.should == "increment increment_test 1 #{now.to_i}"
+  end
+end
+
 describe Instrumental::Agent, "enabled" do
   before do
     @server = TestServer.new
