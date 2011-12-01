@@ -5,6 +5,7 @@ class TestServer
     @connect_count = 0
     @connections = []
     @commands = []
+    @host = 'localhost'
     listen
   end
 
@@ -14,18 +15,22 @@ class TestServer
     Thread.new do
       begin
         # puts "listening"
-        socket = @server.accept
-        @connect_count += 1
-        @connections << socket
-        # puts "connection received"
         loop do
-          command = socket.gets.strip
-          # puts "got: #{command}"
-          commands << command
+          socket = @server.accept
+          Thread.new do
+            @connect_count += 1
+            @connections << socket
+            # puts "connection received"
+            loop do
+              command = socket.gets.strip
+              # puts "got: #{command}"
+              commands << command
+            end
+          end
         end
       rescue Exception => err
         unless @stopping
-          # puts "EXCEPTION:", err unless @stopping
+          puts "EXCEPTION:", err unless @stopping
           retry
         end
       end

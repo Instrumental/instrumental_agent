@@ -19,7 +19,7 @@ describe Instrumental::Agent, "disabled" do
     @server.connect_count.should == 0
   end
 
-  it "should not connect to the server" do
+  it "should not connect to the server after receiving a metric" do
     wait
     @agent.gauge('disabled_test', 1)
     wait
@@ -147,6 +147,21 @@ describe Instrumental::Agent, "enabled" do
     wait
     @server.connect_count.should == 2
     @server.commands.last.should == "increment reconnect_test 1 1234"
+  end
+
+  it "should automatically reconnect when forked" do
+    wait
+    @agent.increment('fork_reconnect_test', 1, 2)
+    fork do
+      @agent.increment('fork_reconnect_test', 1, 3) # triggers reconnect
+    end
+    wait
+    @agent.increment('fork_reconnect_test', 1, 4) # triggers reconnect
+    wait
+    @server.connect_count.should == 2
+    @server.commands.should include("increment fork_reconnect_test 1 2")
+    @server.commands.should include("increment fork_reconnect_test 1 3")
+    @server.commands.should include("increment fork_reconnect_test 1 4")
   end
 
   it "should never let an exception reach the user" do
