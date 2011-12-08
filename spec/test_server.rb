@@ -20,6 +20,7 @@ class TestServer
           Thread.new do
             @connect_count += 1
             @connections << socket
+            socket.puts "options flush_interval 0.1" # fast flushing for testing
             # puts "connection received"
             loop do
               command = socket.gets.strip

@@ -11,7 +11,10 @@ module Instrumental
   class Agent
     BACKOFF = 2.0
     MAX_RECONNECT_DELAY = 15
-    MAX_BUFFER = 100
+    COMMAND_BUFFER_SIZE = 500
+    METRIC_BUFFER_SIZE = 100
+    INITIAL_METRIC_BUFFER_RESOLUTION = 60
+    INITIAL_FLUSH_INTERVAL = 60
 
     attr_accessor :host, :port
     attr_reader :connection, :enabled
@@ -22,6 +25,7 @@ module Instrumental
 
     def self.logger(force = false)
       @logger ||= Logger.new(File.open('/dev/null', 'a')) # append mode so it's forksafe
+      # @logger = Logger.new(STDOUT)
     end
 
     def self.all
@@ -57,7 +61,6 @@ module Instrumental
 
       if @enabled
         @failures = 0
-        @queue = Queue.new
         start_connection_worker
         setup_cleanup_at_exit
       end
@@ -67,8 +70,8 @@ module Instrumental
     #
     #  agent.gauge('load', 1.23)
     def gauge(metric, value, time = Time.now)
-      if valid?(metric, value, time) &&
-          send_command("gauge", metric, value, time.to_i)
+      if enabled? && valid?(metric, value, time) &&
+          safe_buffer.gauge(metric, value, time.to_i)
         value
       else
         nil
@@ -82,8 +85,8 @@ module Instrumental
     #
     #  agent.increment('users')
     def increment(metric, value = 1, time = Time.now)
-      if valid?(metric, value, time) &&
-          send_command("increment", metric, value, time.to_i)
+      if enabled? && valid?(metric, value, time) &&
+          safe_buffer.increment(metric, value, time.to_i)
         value
       else
         nil
@@ -103,6 +106,10 @@ module Instrumental
 
     def logger
       self.class.logger
+    end
+
+    def store(*args)
+      send_command(args.join(' '))
     end
 
     private
@@ -126,18 +133,24 @@ module Instrumental
       logger.error e.backtrace.join("\n")
     end
 
+    def setup_new_worker_if_pid_changed
+      if @pid != Process.pid
+        logger.info "Detected fork"
+        @pid = Process.pid
+        @socket = nil
+        start_connection_worker
+      end
+    end
+
+    def safe_buffer
+      setup_new_worker_if_pid_changed
+      @buffer
+    end
+
     def send_command(cmd, *args)
       if enabled?
-        if @pid != Process.pid
-          logger.info "Detected fork"
-          @pid = Process.pid
-          @socket = nil
-          @queue = Queue.new
-          start_connection_worker
-        end
-
         cmd = "%s %s\n" % [cmd, args.collect(&:to_s).join(" ")]
-        if @queue.size < MAX_BUFFER
+        if @queue.size < COMMAND_BUFFER_SIZE
           logger.debug "Queueing: #{cmd.chomp}"
           @queue << cmd
           cmd
@@ -160,6 +173,8 @@ module Instrumental
     def start_connection_worker
       if enabled?
         disconnect
+        @queue = Queue.new
+        @buffer = MetricBuffer.new(INITIAL_METRIC_BUFFER_RESOLUTION, METRIC_BUFFER_SIZE, self)
         logger.info "Starting thread"
         @thread = Thread.new do
           loop do
@@ -177,6 +192,21 @@ module Instrumental
       logger.info "connected to collector at #{host}:#{port}"
       @socket.puts "hello version #{Instrumental::VERSION} test_mode #{@test_mode}"
       @socket.puts "authenticate #{@api_key}"
+      command, *args = @socket.gets.split(' ')
+      options = {
+        'resolution' => INITIAL_METRIC_BUFFER_RESOLUTION,
+        'flush_interval' => INITIAL_FLUSH_INTERVAL,
+      }
+      case command
+      when 'options'
+        server_options = Hash[*args]
+        logger.debug "Server supplied options: #{server_options.inspect}"
+        options.merge!(server_options)
+      else
+      end
+      @buffer.resolution = options['resolution'].to_i
+      @flush_interval = options['flush_interval'].to_f
+      @flusher = Thread.new { loop { sleep @flush_interval; @buffer.flush! } }
       loop do
         command_and_args = @queue.pop
         test_connection
@@ -197,6 +227,7 @@ module Instrumental
         logger.debug "requeueing: #{command_and_args}"
         @queue << command_and_args 
       end
+      @flusher.kill if @flusher.alive?
       disconnect
       @failures += 1
       delay = [(@failures - 1) ** BACKOFF, MAX_RECONNECT_DELAY].min
@@ -204,19 +235,23 @@ module Instrumental
       sleep delay
       retry
     ensure
+      @flusher.kill if @flusher.alive?
       disconnect
     end
 
     def setup_cleanup_at_exit
       at_exit do
-        if !@queue.empty? && @thread.alive?
-          if @failures > 0
-            logger.info "exit received but disconnected, dropping #{@queue.size} commands"
-            @thread.kill
-          else
-            logger.info "exit received, #{@queue.size} commands to be sent"
-            @queue << 'exit'
-            @thread.join
+        if @thread.alive?
+          @buffer.flush! if @buffer
+          if !@queue.empty?
+            if @failures > 0
+              logger.info "exit received but disconnected, dropping #{@queue.size} commands"
+              @thread.kill
+            else
+              logger.info "exit received, #{@queue.size} commands to be sent"
+              @queue << 'exit'
+              @thread.join
+            end
           end
         end
       end

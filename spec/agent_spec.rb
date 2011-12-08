@@ -4,10 +4,10 @@ def wait
   sleep 0.2 # FIXME: hack
 end
 
-describe Instrumental::Agent, "disabled" do
+describe Agent, "disabled" do
   before do
     @server = TestServer.new
-    @agent = Instrumental::Agent.new('test_token', :collector => @server.host_and_port, :enabled => false)
+    @agent = Agent.new('test_token', :collector => @server.host_and_port, :enabled => false)
   end
 
   after do
@@ -28,10 +28,10 @@ describe Instrumental::Agent, "disabled" do
 
 end
 
-describe Instrumental::Agent, "enabled in test_mode" do
+describe Agent, "enabled in test_mode" do
   before do
     @server = TestServer.new
-    @agent = Instrumental::Agent.new('test_token', :collector => @server.host_and_port, :test_mode => true)
+    @agent = Agent.new('test_token', :collector => @server.host_and_port, :test_mode => true)
   end
 
   after do
@@ -57,21 +57,21 @@ describe Instrumental::Agent, "enabled in test_mode" do
     now = Time.now
     @agent.gauge('gauge_test', 123)
     wait
-    @server.commands.last.should == "gauge gauge_test 123 #{now.to_i}"
+    @server.commands.last.should == "gauge gauge_test 123 #{now.to_i / 60 * 60}"
   end
 
   it "should report an increment" do
     now = Time.now
     @agent.increment("increment_test")
     wait
-    @server.commands.last.should == "increment increment_test 1 #{now.to_i}"
+    @server.commands.last.should == "increment increment_test 1 #{now.to_i / 60 * 60}"
   end
 end
 
-describe Instrumental::Agent, "enabled" do
+describe Agent, "enabled" do
   before do
     @server = TestServer.new
-    @agent = Instrumental::Agent.new('test_token', :collector => @server.host_and_port)
+    @agent = Agent.new('test_token', :collector => @server.host_and_port)
   end
 
   after do
@@ -97,7 +97,7 @@ describe Instrumental::Agent, "enabled" do
     now = Time.now
     @agent.gauge('gauge_test', 123)
     wait
-    @server.commands.last.should == "gauge gauge_test 123 #{now.to_i}"
+    @server.commands.last.should == "gauge gauge_test 123 #{now.to_i / 60 * 60}"
   end
 
   it "should return the value gauged" do
@@ -108,16 +108,16 @@ describe Instrumental::Agent, "enabled" do
   end
 
   it "should report a gauge with a set time" do
-    @agent.gauge('gauge_test', 123, 555)
+    @agent.gauge('gauge_test', 123, 540)
     wait
-    @server.commands.last.should == "gauge gauge_test 123 555"
+    @server.commands.last.should == "gauge gauge_test 123 540"
   end
 
   it "should report an increment" do
     now = Time.now
     @agent.increment("increment_test")
     wait
-    @server.commands.last.should == "increment increment_test 1 #{now.to_i}"
+    @server.commands.last.should == "increment increment_test 1 #{now.to_i / 60 * 60}"
   end
 
   it "should return the value incremented by" do
@@ -131,53 +131,46 @@ describe Instrumental::Agent, "enabled" do
     now = Time.now
     @agent.increment("increment_test", 2)
     wait
-    @server.commands.last.should == "increment increment_test 2 #{now.to_i}"
+    @server.commands.last.should == "increment increment_test 2 #{now.to_i / 60 * 60}"
   end
 
   it "should report an increment with a set time" do
-    @agent.increment('increment_test', 1, 555)
+    @agent.increment('increment_test', 1, 540)
     wait
-    @server.commands.last.should == "increment increment_test 1 555"
+    @server.commands.last.should == "increment increment_test 1 540"
   end
 
   it "should automatically reconnect" do
     wait
     @server.disconnect_all
-    @agent.increment('reconnect_test', 1, 1234) # triggers reconnect
+    @agent.increment('reconnect_test', 1, 1200) # triggers reconnect
     wait
     @server.connect_count.should == 2
-    @server.commands.last.should == "increment reconnect_test 1 1234"
+    @server.commands.last.should == "increment reconnect_test 1 1200"
   end
 
   it "should automatically reconnect when forked" do
     wait
-    @agent.increment('fork_reconnect_test', 1, 2)
+    @agent.increment('fork_reconnect_test', 1, 0)
     fork do
-      @agent.increment('fork_reconnect_test', 1, 3) # triggers reconnect
+      @agent.increment('fork_reconnect_test', 1, 60) # triggers reconnect
+      wait
     end
     wait
-    @agent.increment('fork_reconnect_test', 1, 4) # triggers reconnect
+    @agent.increment('fork_reconnect_test', 1, 120) # triggers reconnect
     wait
     @server.connect_count.should == 2
-    @server.commands.should include("increment fork_reconnect_test 1 2")
-    @server.commands.should include("increment fork_reconnect_test 1 3")
-    @server.commands.should include("increment fork_reconnect_test 1 4")
+    @server.commands.should include("increment fork_reconnect_test 1 0")
+    @server.commands.should include("increment fork_reconnect_test 1 60")
+    @server.commands.should include("increment fork_reconnect_test 1 120")
   end
 
   it "should never let an exception reach the user" do
-    @agent.stub!(:send_command).and_raise(Exception.new("Test Exception"))
-    @agent.increment('throws_exception', 2).should be_nil
+    @agent.should_receive(:valid?).exactly(2).times.and_raise(Exception.new("Test Exception"))
+    expect { @agent.increment('throws_exception', 2) }.should_not raise_exception
     wait
-    @agent.gauge('throws_exception', 234).should be_nil
+    expect { @agent.gauge('throws_exception', 234) }.should_not raise_exception
     wait
   end
 
-  it "should return nil if the user overflows the MAX_BUFFER" do
-    thread = @agent.instance_variable_get(:@thread)
-    thread.kill
-    1.upto(Instrumental::Agent::MAX_BUFFER) do
-      @agent.increment("test").should == 1
-    end
-    @agent.increment("test").should be_nil
-  end
 end
