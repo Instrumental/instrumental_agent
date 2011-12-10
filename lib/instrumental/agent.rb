@@ -13,7 +13,7 @@ module Instrumental
     MAX_RECONNECT_DELAY = 15
     MAX_BUFFER = 100
 
-    attr_accessor :host, :port
+    attr_accessor :host, :port, :synchronous
     attr_reader :connection, :enabled
 
     def self.logger=(l)
@@ -150,7 +150,9 @@ module Instrumental
         cmd = "%s %s\n" % [cmd, args.collect(&:to_s).join(" ")]
         if @queue.size < MAX_BUFFER
           logger.debug "Queueing: #{cmd.chomp}"
+          @main_thread = Thread.current if @synchronous
           @queue << cmd
+          Thread.stop if @synchronous
           cmd
         else
           logger.warn "Dropping command, queue full(#{@queue.size}): #{cmd.chomp}"
@@ -201,6 +203,7 @@ module Instrumental
           @socket.puts command_and_args
           command_and_args = nil
         end
+        @main_thread.run if @synchronous
       end
     rescue Exception => err
       logger.error err.to_s

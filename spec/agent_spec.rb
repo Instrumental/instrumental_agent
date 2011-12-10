@@ -140,6 +140,35 @@ describe Instrumental::Agent, "enabled" do
     @server.commands.last.should == "increment increment_test 1 555"
   end
 
+  it "should discard data that overflows the buffer" do
+    with_constants('Instrumental::Agent::MAX_BUFFER' => 3) do
+      5.times do |i|
+        @agent.increment('overflow_test', i + 1, 300)
+      end
+      wait
+      @server.commands.should     include("increment overflow_test 1 300")
+      @server.commands.should     include("increment overflow_test 2 300")
+      @server.commands.should     include("increment overflow_test 3 300")
+      @server.commands.should_not include("increment overflow_test 4 300")
+      @server.commands.should_not include("increment overflow_test 5 300")
+    end
+  end
+
+  it "should send all data in synchronous mode" do
+    with_constants('Instrumental::Agent::MAX_BUFFER' => 3) do
+      @agent.synchronous = true
+      5.times do |i|
+        @agent.increment('overflow_test', i + 1, 300)
+      end
+      wait # let the server receive the commands
+      @server.commands.should include("increment overflow_test 1 300")
+      @server.commands.should include("increment overflow_test 2 300")
+      @server.commands.should include("increment overflow_test 3 300")
+      @server.commands.should include("increment overflow_test 4 300")
+      @server.commands.should include("increment overflow_test 5 300")
+    end
+  end
+
   it "should automatically reconnect" do
     wait
     @server.disconnect_all
