@@ -11,7 +11,7 @@ module Instrumental
   class Agent
     BACKOFF = 2.0
     MAX_RECONNECT_DELAY = 15
-    MAX_BUFFER = 100
+    MAX_BUFFER = 5000
 
     attr_accessor :host, :port
     attr_reader :connection, :enabled

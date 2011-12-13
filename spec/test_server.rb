@@ -1,10 +1,11 @@
 class TestServer
-  attr_accessor :host, :port, :connect_count, :commands
+  attr_accessor :host, :port, :connect_count, :commands, :increments
 
   def initialize
     @connect_count = 0
     @connections = []
     @commands = []
+    @increments = []
     @host = 'localhost'
     listen
   end
@@ -24,6 +25,9 @@ class TestServer
             loop do
               command = socket.gets.strip
               # puts "got: #{command}"
+              if command.split(' ')[0] == 'increment'
+                increments << command
+              end
               commands << command
             end
           end
