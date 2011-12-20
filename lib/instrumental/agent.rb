@@ -93,6 +93,21 @@ module Instrumental
       nil
     end
 
+    # Send a notice to the server (deploys, downtime, etc.)
+    #
+    # agent.notice('A notice')
+    def notice(note, time = Time.now, duration = 0)
+      if valid_note?(note)
+        send_command("notice", time.to_i, duration.to_i, note)
+        note
+      else
+        nil
+      end
+    rescue Exception => e
+      report_exception(e)
+      nil
+    end
+
     def enabled?
       @enabled
     end
@@ -110,6 +125,10 @@ module Instrumental
     end
 
     private
+
+    def valid_note?(note)
+      note !~ /[\n\r]/
+    end
 
     def valid?(metric, value, time)
       valid_metric = metric =~ /^([\d\w\-_]+\.)*[\d\w\-_]+$/i

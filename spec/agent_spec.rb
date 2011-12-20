@@ -66,6 +66,13 @@ describe Instrumental::Agent, "enabled in test_mode" do
     wait
     @server.commands.last.should == "increment increment_test 1 #{now.to_i}"
   end
+
+  it "should send notices to the server" do
+    tm = Time.now
+    @agent.notice("Test note", tm)
+    wait
+    @server.commands.join("\n").should include("notice #{tm.to_i} 0 Test note")
+  end
 end
 
 describe Instrumental::Agent, "enabled" do
@@ -243,5 +250,18 @@ describe Instrumental::Agent, "enabled" do
     @agent.increment('a',  333.333)
     wait
     @server.commands.join("\n").should_not include("increment agent.invalid_value")
+  end
+
+  it "should send notices to the server" do
+    tm = Time.now
+    @agent.notice("Test note", tm)
+    wait
+    @server.commands.join("\n").should include("notice #{tm.to_i} 0 Test note")
+  end
+
+  it "should prevent a note w/ newline characters from being sent to the server" do
+    @agent.notice("Test note\n").should be_nil
+    wait
+    @server.commands.join("\n").should_not include("notice Test note")
   end
 end

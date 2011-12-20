@@ -56,6 +56,14 @@ User.find_each do |user|
 end
 ```
 
+Want to track an event (like an application deploy, or downtime)? You can capture events that
+are instantaneous, or events that happen over a period of time.
+
+```sh
+I.notice('Jeffy deployed rev ef3d6a') # instantaneous event
+I.notice('Testing socket buffer increase', 3.days.ago, 20.minutes) # an event with a duration
+```
+
 ## Server stats
 
 Want some general server stats (load, memory, etc.)? Check out the
