@@ -6,6 +6,7 @@ end
 
 describe Instrumental::Agent, "disabled" do
   before do
+    Instrumental::Agent.logger.level = Logger::UNKNOWN
     @server = TestServer.new
     @agent = Instrumental::Agent.new('test_token', :collector => @server.host_and_port, :enabled => false)
   end

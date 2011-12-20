@@ -20,8 +20,12 @@ module Instrumental
       @logger = l
     end
 
-    def self.logger(force = false)
-      @logger ||= Logger.new(File.open('/dev/null', 'a')) # append mode so it's forksafe
+    def self.logger
+      if !@logger 
+        @logger = Logger.new(STDERR)
+        @logger.level = Logger::WARN
+      end
+      @logger
     end
 
     def self.all
