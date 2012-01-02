@@ -78,7 +78,7 @@ end
 describe Instrumental::Agent, "enabled" do
   before do
     @server = TestServer.new
-    @agent = Instrumental::Agent.new('test_token', :collector => @server.host_and_port, :synchronous => false)
+    @agent = Instrumental::Agent.new('test_token', :collector => @server.host_and_port)
   end
 
   after do
