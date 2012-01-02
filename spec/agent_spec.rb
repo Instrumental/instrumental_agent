@@ -267,22 +267,14 @@ describe Instrumental::Agent, "enabled" do
 end
 
 describe Instrumental::Agent, "enabled with sync option" do
-  around(:each) do |instrumentation|
+  before do
     @server = TestServer.new
     @agent = Instrumental::Agent.new('test_token', :collector => @server.host_and_port, :synchronous => true)
-    puts "before"
-    instrumentation.run
-    puts "after"
+  end
+
+  after do
     @server.stop
   end
-  # before do
-  #   @server = TestServer.new
-  #   @agent = Instrumental::Agent.new('test_token', :collector => @server.host_and_port, :synchronous => true)
-  # end
-
-  # after do
-  #   @server.stop
-  # end
 
   it "should send all data in synchronous mode" do
     with_constants('Instrumental::Agent::MAX_BUFFER' => 3) do
