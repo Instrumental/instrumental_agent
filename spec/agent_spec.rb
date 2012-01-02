@@ -79,7 +79,7 @@ end
 describe Instrumental::Agent, "enabled" do
   before do
     @server = TestServer.new
-    @agent = Instrumental::Agent.new('test_token', :collector => @server.host_and_port, :synchronous => false)
+    @agent = Instrumental::Agent.new('test_token', :collector => @server.host_and_port)
   end
 
   after do
@@ -271,6 +271,10 @@ describe Instrumental::Agent, "enabled with sync option" do
   before do
     @server = TestServer.new
     @agent = Instrumental::Agent.new('test_token', :collector => @server.host_and_port, :synchronous => true)
+  end
+
+  after do
+    @server.stop
   end
 
   it "should send all data in synchronous mode" do
