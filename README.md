@@ -25,8 +25,16 @@ can verify stats in one, and release them to production in another.
 Now you can begin to use Instrumental to track your application.
 
 ```sh
-I.gauge('load', 1.23)  # value at a point in time
-I.increment('signups') # increasing value, think "events"
+I.gauge('load', 1.23)                # value at a point in time
+
+I.increment('signups')               # increasing value, think "events"
+
+I.time('query_time') do              # time a block of code
+  post = Post.find(1)
+end
+I.time_ms('query_time_in_ms') do     # prefer milliseconds?
+  post = Post.find(1)
+end
 ```
 
 **Note**: For your app's safety, the agent is meant to isolate your app

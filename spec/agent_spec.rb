@@ -61,6 +61,30 @@ describe Instrumental::Agent, "enabled in test_mode" do
     @server.commands.last.should == "gauge gauge_test 123 #{now.to_i}"
   end
 
+  it "should report a time as gauge and return the block result" do
+    now = Time.now
+    @agent.time("time_value_test") do
+      sleep 0.1
+      1 + 1
+    end.should == 2
+    wait
+    @server.commands.last.should =~ /gauge time_value_test .* #{now.to_i}/
+    time = @server.commands.last.scan(/gauge time_value_test (.*) #{now.to_i}/)[0][0].to_f
+    time.should > 0.1
+  end
+
+  it "should report a time as a millisecond gauge and return the block result" do
+    now = Time.now
+    @agent.time_ms("time_ms_test") do
+      sleep 0.1
+      1 + 1
+    end.should == 2
+    wait
+    @server.commands.last.should =~ /gauge time_ms_test .* #{now.to_i}/
+    time = @server.commands.last.scan(/gauge time_ms_test (.*) #{now.to_i}/)[0][0].to_f
+    time.should > 100
+  end
+
   it "should report an increment" do
     now = Time.now
     @agent.increment("increment_test")
@@ -106,6 +130,15 @@ describe Instrumental::Agent, "enabled" do
     @agent.gauge('gauge_test', 123)
     wait
     @server.commands.last.should == "gauge gauge_test 123 #{now.to_i}"
+  end
+
+  it "should report a time as gauge and return the block result" do
+    now = Time.now
+    @agent.time("time_value_test") do
+      1 + 1
+    end.should == 2
+    wait
+    @server.commands.last.should =~ /gauge time_value_test .* #{now.to_i}/
   end
 
   it "should return the value gauged" do
@@ -207,6 +240,10 @@ describe Instrumental::Agent, "enabled" do
     wait
     @agent.gauge('throws_exception', 234).should be_nil
     wait
+  end
+
+  it "should let exceptions in time bubble up" do
+    expect { @agent.time('za') { raise "fail" } }.to raise_error
   end
 
   it "should return nil if the user overflows the MAX_BUFFER" do

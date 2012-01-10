@@ -84,6 +84,36 @@ module Instrumental
       nil
     end
 
+    # Store the duration of a block in a metric. multiplier can be used
+    # to scale the duration to desired unit or change the duration in
+    # some meaningful way.
+    #
+    #  agent.time('response_time') do
+    #    # potentially slow stuff
+    #  end
+    #
+    #  agent.time('response_time_in_ms', 1000) do
+    #    # potentially slow stuff
+    #  end
+    #
+    #  ids = [1, 2, 3]
+    #  agent.time('find_time_per_post', 1 / ids.size.to_f) do
+    #    Post.find(ids)
+    #  end
+    def time(metric, multiplier = 1)
+      start = Time.now
+      result = yield
+      finish = Time.now
+      duration = finish - start
+      gauge(metric, duration * multiplier, start)
+      result
+    end
+
+    # Calls time and changes durations into milliseconds.
+    def time_ms(metric, &block)
+      time(metric, 1000, &block)
+    end
+
     # Increment a metric, optionally more than one or at a specific time.
     #
     #  agent.increment('users')
