@@ -1,12 +1,19 @@
 class TestServer
   attr_accessor :host, :port, :connect_count, :commands
 
-  def initialize
+  def initialize(options={})
+    default_options = {
+      :listen => true,
+      :authenticate => true,
+      :response => true,
+    }
+    @options = default_options.merge(options)
+
     @connect_count = 0
     @connections = []
     @commands = []
     @host = 'localhost'
-    listen
+    listen if @options[:listen]
   end
 
   def listen
@@ -25,6 +32,15 @@ class TestServer
               command = socket.gets.strip
               # puts "got: #{command}"
               commands << command
+              if %w[hello authenticate].include?(command.split(' ')[0])
+                if @options[:response]
+                  if @options[:authenticate]
+                    socket.puts "ok"
+                  else
+                    socket.puts "gtfo"
+                  end
+                end
+              end
             end
           end
         end
@@ -50,7 +66,7 @@ class TestServer
   def stop
     @stopping = true
     disconnect_all
-    @server.close # FIXME: necessary?
+    @server.close if @server
   end
 
   def disconnect_all

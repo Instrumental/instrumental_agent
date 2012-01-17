@@ -225,15 +225,6 @@ describe Instrumental::Agent, "enabled" do
     end
   end
 
-  it "should automatically reconnect" do
-    wait
-    @server.disconnect_all
-    @agent.increment('reconnect_test', 1, 1234) # triggers reconnect
-    wait
-    @server.connect_count.should == 2
-    @server.commands.last.should == "increment reconnect_test 1 1234"
-  end
-
   it "should automatically reconnect when forked" do
     wait
     @agent.increment('fork_reconnect_test', 1, 2)
@@ -317,6 +308,50 @@ describe Instrumental::Agent, "enabled" do
     @agent.notice("Test note\n").should be_nil
     wait
     @server.commands.join("\n").should_not include("notice Test note")
+  end
+end
+
+describe Instrumental::Agent, "connection problems" do
+  after do
+    @server.stop
+  end
+
+  it "should automatically reconnect on disconnect" do
+    @server = TestServer.new
+    @agent = Instrumental::Agent.new('test_token', :collector => @server.host_and_port, :synchronous => false)
+    wait
+    @server.disconnect_all
+    @agent.increment('reconnect_test', 1, 1234) # triggers reconnect
+    wait
+    @server.connect_count.should == 2
+    @server.commands.last.should == "increment reconnect_test 1 1234"
+  end
+
+  it "should buffer commands when server is down" do
+    @server = TestServer.new(:listen => false)
+    @agent = Instrumental::Agent.new('test_token', :collector => @server.host_and_port, :synchronous => false)
+    wait
+    @agent.increment('reconnect_test', 1, 1234)
+    wait
+    @agent.queue.pop(true).should == "increment reconnect_test 1 1234\n"
+  end
+
+  it "should buffer commands when server is not responsive" do
+    @server = TestServer.new(:response => false)
+    @agent = Instrumental::Agent.new('test_token', :collector => @server.host_and_port, :synchronous => false)
+    wait
+    @agent.increment('reconnect_test', 1, 1234)
+    wait
+    @agent.queue.pop(true).should == "increment reconnect_test 1 1234\n"
+  end
+
+  it "should buffer commands when authentication fails" do
+    @server = TestServer.new(:authenticate => false)
+    @agent = Instrumental::Agent.new('test_token', :collector => @server.host_and_port, :synchronous => false)
+    wait
+    @agent.increment('reconnect_test', 1, 1234)
+    wait
+    @agent.queue.pop(true).should == "increment reconnect_test 1 1234\n"
   end
 end
 

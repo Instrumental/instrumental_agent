@@ -3,6 +3,7 @@ require 'instrumental/version'
 require 'logger'
 require 'thread'
 require 'socket'
+require 'timeout'
 
 # Sets up a connection to the collector.
 #
@@ -12,8 +13,9 @@ module Instrumental
     BACKOFF = 2.0
     MAX_RECONNECT_DELAY = 15
     MAX_BUFFER = 5000
+    REPLY_TIMEOUT = 10
 
-    attr_accessor :host, :port, :synchronous
+    attr_accessor :host, :port, :synchronous, :queue
     attr_reader :connection, :enabled
 
     def self.logger=(l)
@@ -21,7 +23,7 @@ module Instrumental
     end
 
     def self.logger
-      if !@logger 
+      if !@logger
         @logger = Logger.new(STDERR)
         @logger.level = Logger::WARN
       end
@@ -240,14 +242,24 @@ module Instrumental
       end
     end
 
+    def send_with_reply_timeout(message)
+      @socket.puts message
+      Timeout.timeout(REPLY_TIMEOUT) do
+        response = @socket.gets
+        if response.to_s.chomp != "ok"
+          raise "Bad Response #{response.inspect} to #{message.inspect}"
+        end
+      end
+    end
+
     def connection_worker
       command_and_args = nil
       logger.info "connecting to collector"
       @socket = TCPSocket.new(host, port)
-      @failures = 0
       logger.info "connected to collector at #{host}:#{port}"
-      @socket.puts "hello version #{Instrumental::VERSION} test_mode #{@test_mode}"
-      @socket.puts "authenticate #{@api_key}"
+      send_with_reply_timeout "hello version #{Instrumental::VERSION} test_mode #{@test_mode}"
+      send_with_reply_timeout "authenticate #{@api_key}"
+      @failures = 0
       loop do
         command_and_args = @queue.pop
         test_connection
@@ -272,7 +284,7 @@ module Instrumental
       disconnect
       @failures += 1
       delay = [(@failures - 1) ** BACKOFF, MAX_RECONNECT_DELAY].min
-      logger.info "disconnected, reconnect in #{delay}..."
+      logger.error "disconnected, #{@failures} failures in a row, reconnect in #{delay}..."
       sleep delay
       retry
     ensure
