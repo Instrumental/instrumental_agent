@@ -207,7 +207,7 @@ module Instrumental
           start_connection_worker
         end
 
-        cmd = "%s %s\n" % [cmd, args.collect(&:to_s).join(" ")]
+        cmd = "%s %s\n" % [cmd, args.collect { |v| v.to_s }.join(" ")]
         if @queue.size < MAX_BUFFER
           logger.debug "Queueing: #{cmd.chomp}"
           @main_thread = Thread.current if @synchronous
