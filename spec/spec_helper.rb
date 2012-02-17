@@ -15,8 +15,10 @@ end
 
 
 def parse_constant(constant)
-  source, _, constant_name = constant.to_s.rpartition('::')
-
+  constant = constant.to_s
+  parts = constant.split("::")
+  constant_name = parts.pop
+  source = parts.join("::")
   [source.constantize, constant_name]
 end
 

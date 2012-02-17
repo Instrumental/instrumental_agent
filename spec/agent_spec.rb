@@ -27,6 +27,19 @@ describe Instrumental::Agent, "disabled" do
     @server.connect_count.should == 0
   end
 
+  it "should no op on flush without reconnect" do
+    1.upto(100) { @agent.gauge('disabled_test', 1) }
+    @agent.flush(false)
+    wait
+    @server.commands.should be_empty
+  end
+
+  it "should no op on flush with reconnect" do
+    1.upto(100) { @agent.gauge('disabled_test', 1) }
+    @agent.flush(true)
+    wait
+    @server.commands.should be_empty
+  end
 end
 
 describe Instrumental::Agent, "enabled in test_mode" do
@@ -81,7 +94,7 @@ describe Instrumental::Agent, "enabled in test_mode" do
         throw :an_exception
         sleep 1
       end
-      }.should raise_error
+    }.should raise_error
     wait
     @server.commands.last.should =~ /gauge time_value_test .* #{now.to_i}/
     time = @server.commands.last.scan(/gauge time_value_test (.*) #{now.to_i}/)[0][0].to_f
@@ -216,6 +229,7 @@ describe Instrumental::Agent, "enabled" do
       5.times do |i|
         @agent.increment('overflow_test', i + 1, 300)
       end
+      @agent.instance_variable_get(:@queue).size.should == 0
       wait # let the server receive the commands
       @server.commands.should include("increment overflow_test 1 300")
       @server.commands.should include("increment overflow_test 2 300")
@@ -309,6 +323,15 @@ describe Instrumental::Agent, "enabled" do
     wait
     @server.commands.join("\n").should_not include("notice Test note")
   end
+
+  it "should allow flushing pending values to the server" do
+    1.upto(100) { @agent.gauge('a', rand(50)) }
+    @agent.instance_variable_get(:@queue).size.should >= 100
+    @agent.flush
+    @agent.instance_variable_get(:@queue).size.should ==  0
+    wait
+    @server.commands.grep(/^gauge a /).size.should == 100
+  end
 end
 
 describe Instrumental::Agent, "connection problems" do
@@ -333,7 +356,7 @@ describe Instrumental::Agent, "connection problems" do
     wait
     @agent.increment('reconnect_test', 1, 1234)
     wait
-    @agent.queue.pop(true).should == "increment reconnect_test 1 1234\n"
+    @agent.queue.pop(true).should include("increment reconnect_test 1 1234\n")
   end
 
   it "should buffer commands when server is not responsive" do
@@ -342,7 +365,7 @@ describe Instrumental::Agent, "connection problems" do
     wait
     @agent.increment('reconnect_test', 1, 1234)
     wait
-    @agent.queue.pop(true).should == "increment reconnect_test 1 1234\n"
+    @agent.queue.pop(true).should include("increment reconnect_test 1 1234\n")
   end
 
   it "should buffer commands when authentication fails" do
@@ -351,7 +374,31 @@ describe Instrumental::Agent, "connection problems" do
     wait
     @agent.increment('reconnect_test', 1, 1234)
     wait
-    @agent.queue.pop(true).should == "increment reconnect_test 1 1234\n"
+    @agent.queue.pop(true).should include("increment reconnect_test 1 1234\n")
+  end
+
+  it "should send commands in a short-lived process" do
+    @server = TestServer.new
+    @agent = Instrumental::Agent.new('test_token', :collector => @server.host_and_port, :synchronous => false)
+    if pid = fork { @agent.increment('foo', 1, 1234) }
+      Process.wait(pid)
+      @server.commands.last.should == "increment foo 1 1234"
+    end
+  end
+
+  it "should not wait longer than EXIT_FLUSH_TIMEOUT seconds to exit a process" do
+    @server = TestServer.new
+    @agent = Instrumental::Agent.new('test_token', :collector => @server.host_and_port, :synchronous => false)
+    TCPSocket.stub!(:new) { |*args| sleep(5) && StringIO.new }
+    with_constants('Instrumental::Agent::EXIT_FLUSH_TIMEOUT' => 3) do
+      if (pid = fork { @agent.increment('foo', 1) })
+        tm = Time.now.to_f
+        Process.wait(pid)
+        diff = Time.now.to_f - tm
+        diff.should >= 3
+        diff.should < 5
+      end
+    end
   end
 end
 

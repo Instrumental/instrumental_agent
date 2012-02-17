@@ -55,6 +55,7 @@ class TestServer
   rescue Exception => err
     # FIXME: doesn't seem to be detecting failures of listen
     puts "failed to get port"
+    puts err.message
     @port += 1
     retry
   end
