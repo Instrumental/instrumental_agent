@@ -25,6 +25,6 @@ Gem::Specification.new do |s|
     s.add_development_dependency(%q<rb-fsevent>, [">= 0"])
   end
   if RUBY_VERSION < "1.9"
-    s.add_development_dependency(%q<system_timer>, [">= 0"])
+    s.add_dependency(%q<system_timer>, [">= 0"])
   end
 end
