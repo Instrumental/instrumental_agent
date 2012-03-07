@@ -69,24 +69,26 @@ module Instrumental
     #  Instrumental::Agent.new(API_KEY)
     #  Instrumental::Agent.new(API_KEY, :collector => 'hostname:port')
     def initialize(api_key, options = {})
-      default_options = {
-        :collector  => 'instrumentalapp.com:8000',
-        :enabled    => true,
-        :test_mode  => false,
-        :synchronous => false
-      }
-      options   = default_options.merge(options)
-      collector = options[:collector].split(':')
+      # symbolize options keys
+      options.replace(
+        options.inject({}) { |m, (k, v)| m[(k.to_sym rescue k) || k] = v; m }
+      )
 
-      @api_key     = api_key
-      @host        = collector[0]
-      @port        = (collector[1] || 8000).to_i
-      @enabled     = options[:enabled]
-      @test_mode   = options[:test_mode]
-      @synchronous = options[:synchronous]
+      # defaults
+      # host:        instrumentalapp.com
+      # port:        8000
+      # enabled:     true
+      # test_mode:   false
+      # synchronous: false
+      @api_key         = api_key
+      @host, @port     = options[:collector].to_s.split(':')
+      @host          ||= 'instrumentalapp.com'
+      @port            = (@port || 8000).to_i
+      @enabled         = options.has_key?(:enabled) ? !!options[:enabled] : true
+      @test_mode       = !!options[:test_mode]
+      @synchronous     = !!options[:synchronous]
+      @pid             = Process.pid
       @allow_reconnect = true
-      @pid = Process.pid
-
 
       if @enabled
         @failures = 0
