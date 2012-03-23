@@ -3,6 +3,7 @@ require 'instrumental/version'
 require 'logger'
 require 'thread'
 require 'socket'
+
 if RUBY_VERSION < "1.9" && RUBY_PLATFORM != "java"
   begin
     gem 'system_timer'
@@ -85,16 +86,7 @@ module Instrumental
       @test_mode   = options[:test_mode]
       @synchronous = options[:synchronous]
       @allow_reconnect = true
-      @pid = Process.pid
-
-
-      if @enabled
-        @failures = 0
-        @queue = Queue.new
-        @sync_mutex = Mutex.new
-        start_connection_worker
-        setup_cleanup_at_exit
-      end
+      setup_cleanup_at_exit
     end
 
     # Store a gauge for a metric, optionally at a specific time.
@@ -204,6 +196,23 @@ module Instrumental
       @logger ||= self.class.logger
     end
 
+    # Stopping the agent will immediately stop all communication 
+    # to Instrumental.  If you call this and submit another metric,
+    # the agent will start again.
+    #
+    # Calling stop will cause all metrics waiting to be sent to be
+    # discarded.  Don't call it unless you are expecting this behavior.
+    #
+    # agent.stop
+    #
+    def stop
+      disconnect
+      if @thread
+        @thread.kill
+        @thread = nil
+      end
+    end
+
     private
 
     def with_timeout(time, &block)
@@ -242,13 +251,7 @@ module Instrumental
 
     def send_command(cmd, *args)
       if enabled?
-        if @pid != Process.pid
-          logger.info "Detected fork"
-          @pid = Process.pid
-          @socket = nil
-          @queue = Queue.new
-          start_connection_worker
-        end
+        start_connection_worker if !running?
 
         cmd = "%s %s\n" % [cmd, args.collect { |a| a.to_s }.join(" ")]
         if @queue.size < MAX_BUFFER
@@ -293,6 +296,10 @@ module Instrumental
     def start_connection_worker
       if enabled?
         disconnect
+        @pid = Process.pid
+        @queue = Queue.new
+        @sync_mutex = Mutex.new
+        @failures = 0
         logger.info "Starting thread"
         @thread = Thread.new do
           run_worker_loop
@@ -364,21 +371,26 @@ module Instrumental
 
     def setup_cleanup_at_exit
       at_exit do
-        logger.info "Cleaning up agent, queue empty: #{@queue.empty?}, thread running: #{@thread.alive?}"
-        @allow_reconnect = false
-        logger.info "exit received, currently #{@queue.size} commands to be sent"
-        queue_message('exit')
-        begin
-          with_timeout(EXIT_FLUSH_TIMEOUT) { @thread.join }
-        rescue Timeout::Error
-          if @queue.size > 0
-            logger.error "Timed out working agent thread on exit, dropping #{@queue.size} metrics"
-          else
-            logger.error "Timed out Instrumental Agent, exiting"
+        if running?
+          logger.info "Cleaning up agent, queue empty: #{@queue.empty?}, thread running: #{@thread.alive?}"
+          @allow_reconnect = false
+          logger.info "exit received, currently #{@queue.size} commands to be sent"
+          queue_message('exit')
+          begin
+            with_timeout(EXIT_FLUSH_TIMEOUT) { @thread.join }
+          rescue Timeout::Error
+            if @queue.size > 0
+              logger.error "Timed out working agent thread on exit, dropping #{@queue.size} metrics"
+            else
+              logger.error "Timed out Instrumental Agent, exiting"
+            end
           end
         end
-
       end
+    end
+
+    def running?
+      !@thread.nil? && @pid == Process.pid
     end
 
     def disconnect

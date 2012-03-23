@@ -13,36 +13,50 @@ class TestServer
     @connections = []
     @commands = []
     @host = 'localhost'
+    @main_thread = nil
+    @client_threads = []
+    @fd_to_thread = {}
     listen if @options[:listen]
   end
+
 
   def listen
     @port ||= 10001
     @server = TCPServer.new(port)
-    Thread.new do
+    @main_thread = Thread.new do
       begin
         # puts "listening"
         loop do
-          socket = @server.accept
-          Thread.new do
-            @connect_count += 1
-            @connections << socket
+          client = @server.accept
+          @connections << client
+          @connect_count += 1
+          @fd_to_thread[client.to_i] = Thread.new(client) do |socket|
             # puts "connection received"
             loop do
-              command = socket.gets.strip
-              # puts "got: #{command}"
-              commands << command
-              if %w[hello authenticate].include?(command.split(' ')[0])
-                if @options[:response]
-                  if @options[:authenticate]
-                    socket.puts "ok"
-                  else
-                    socket.puts "gtfo"
+              begin
+                command = ""
+                while (c = socket.read(1)) != "\n"
+                  command << c unless c.nil?
+                end
+                if !command.empty?
+                  # puts "got: #{command}"
+                  commands << command
+                  if %w[hello authenticate].include?(command.split(' ')[0])
+                    if @options[:response]
+                      if @options[:authenticate]
+                        socket.puts "ok"
+                      else
+                        socket.puts "gtfo"
+                      end
+                    end
                   end
                 end
+              rescue Exception => e
+                break
               end
             end
           end
+          @client_threads << @fd_to_thread[client.to_i]
         end
       rescue Exception => err
         unless @stopping
@@ -67,10 +81,24 @@ class TestServer
   def stop
     @stopping = true
     disconnect_all
-    @server.close if @server
+    @main_thread.kill if @main_thread
+    @main_thread = nil
+    @client_threads.each { |thread| thread.kill }
+    @client_threads = []
+    begin
+      @server.close if @server
+    rescue Exception => e
+    end
   end
 
   def disconnect_all
-    @connections.each { |c| c.close rescue false }
+    @connections.each { |c| 
+      if (thr = @fd_to_thread[c.to_i])
+        thr.kill
+      end
+      @fd_to_thread.delete(c.to_i)
+      c.close rescue false 
+    }
+    @connections = []
   end
 end

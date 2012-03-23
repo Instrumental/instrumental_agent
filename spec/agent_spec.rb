@@ -12,6 +12,8 @@ describe Instrumental::Agent, "disabled" do
   end
 
   after do
+    @agent.stop
+    @agent = nil
     @server.stop
   end
 
@@ -43,26 +45,36 @@ describe Instrumental::Agent, "disabled" do
 end
 
 describe Instrumental::Agent, "enabled in test_mode" do
-  before do
+  before(:each) do
     @server = TestServer.new
     @agent = Instrumental::Agent.new('test_token', :collector => @server.host_and_port, :test_mode => true)
   end
 
-  after do
+  after(:each) do
+    @agent.stop
+    @agent = nil
     @server.stop
   end
 
-  it "should connect to the server" do
+  it "should not connect to the server" do
+    wait
+    @server.connect_count.should == 0
+  end
+
+  it "should connect to the server when the user sends a metric" do
+    @agent.increment("test.foo")
     wait
     @server.connect_count.should == 1
   end
 
   it "should announce itself, and include version and test_mode flag" do
+    @agent.increment("test.foo")
     wait
     @server.commands[0].should =~ /hello .*version .*test_mode true/
   end
 
   it "should authenticate using the token" do
+    @agent.increment("test.foo")
     wait
     @server.commands[1].should == "authenticate test_token"
   end
@@ -110,7 +122,7 @@ describe Instrumental::Agent, "enabled in test_mode" do
     wait
     @server.commands.last.should =~ /gauge time_ms_test .* #{now.to_i}/
     time = @server.commands.last.scan(/gauge time_ms_test (.*) #{now.to_i}/)[0][0].to_f
-    time.should > 100
+    time.should > 100.0
   end
 
   it "should report an increment" do
@@ -126,6 +138,17 @@ describe Instrumental::Agent, "enabled in test_mode" do
     wait
     @server.commands.join("\n").should include("notice #{tm.to_i} 0 Test note")
   end
+
+  it "should allow outgoing metrics to be stopped" do
+    tm = Time.now
+    @agent.increment("foo.bar", 1, tm)
+    @agent.stop
+    wait
+    @agent.increment("foo.baz", 1, tm)
+    wait
+    @server.commands.join("\n").should include("increment foo.baz 1 #{tm.to_i}")
+    @server.commands.join("\n").should_not include("increment foo.bar 1 #{tm.to_i}")
+  end
 end
 
 describe Instrumental::Agent, "enabled" do
@@ -135,20 +158,30 @@ describe Instrumental::Agent, "enabled" do
   end
 
   after do
+    @agent.stop
+    @agent = nil
     @server.stop
   end
 
-  it "should connect to the server" do
+  it "should not connect to the server" do
+    wait
+    @server.connect_count.should == 0
+  end
+
+  it "should connect to the server after sending a metric" do
+    @agent.increment("test.foo")
     wait
     @server.connect_count.should == 1
   end
 
   it "should announce itself, and include version" do
+    @agent.increment("test.foo")
     wait
     @server.commands[0].should =~ /hello .*version /
   end
 
   it "should authenticate using the token" do
+    @agent.increment("test.foo")
     wait
     @server.commands[1].should == "authenticate test_token"
   end
@@ -267,10 +300,10 @@ describe Instrumental::Agent, "enabled" do
   end
 
   it "should return nil if the user overflows the MAX_BUFFER" do
-    thread = @agent.instance_variable_get(:@thread)
-    thread.kill
     1.upto(Instrumental::Agent::MAX_BUFFER) do
       @agent.increment("test").should == 1
+      thread = @agent.instance_variable_get(:@thread)
+      thread.kill
     end
     @agent.increment("test").should be_nil
   end
@@ -324,6 +357,17 @@ describe Instrumental::Agent, "enabled" do
     @server.commands.join("\n").should_not include("notice Test note")
   end
 
+  it "should allow outgoing metrics to be stopped" do
+    tm = Time.now
+    @agent.increment("foo.bar", 1, tm)
+    @agent.stop
+    wait
+    @agent.increment("foo.baz", 1, tm)
+    wait
+    @server.commands.join("\n").should include("increment foo.baz 1 #{tm.to_i}")
+    @server.commands.join("\n").should_not include("increment foo.bar 1 #{tm.to_i}")
+  end
+
   it "should allow flushing pending values to the server" do
     1.upto(100) { @agent.gauge('a', rand(50)) }
     @agent.instance_variable_get(:@queue).size.should >= 100
@@ -336,18 +380,20 @@ end
 
 describe Instrumental::Agent, "connection problems" do
   after do
+    @agent.stop
     @server.stop
   end
 
   it "should automatically reconnect on disconnect" do
     @server = TestServer.new
     @agent = Instrumental::Agent.new('test_token', :collector => @server.host_and_port, :synchronous => false)
+    @agent.increment("reconnect_test", 1, 1234)
     wait
     @server.disconnect_all
-    @agent.increment('reconnect_test', 1, 1234) # triggers reconnect
+    @agent.increment('reconnect_test', 1, 5678) # triggers reconnect
     wait
     @server.connect_count.should == 2
-    @server.commands.last.should == "increment reconnect_test 1 1234"
+    @server.commands.last.should == "increment reconnect_test 1 5678"
   end
 
   it "should buffer commands when server is down" do
@@ -408,6 +454,11 @@ describe Instrumental::Agent, "enabled with sync option" do
     @agent = Instrumental::Agent.new('test_token', :collector => @server.host_and_port, :synchronous => true)
   end
 
+  after do
+    @agent.stop
+    @server.stop
+  end
+
   it "should send all data in synchronous mode" do
     with_constants('Instrumental::Agent::MAX_BUFFER' => 3) do
       5.times do |i|
@@ -421,4 +472,5 @@ describe Instrumental::Agent, "enabled with sync option" do
       @server.commands.should include("increment overflow_test 5 300")
     end
   end
+
 end
