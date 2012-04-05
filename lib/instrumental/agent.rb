@@ -278,8 +278,8 @@ module Instrumental
         synchronous = options.delete(:synchronous)
         if synchronous
           options[:sync_resource] ||= ConditionVariable.new
-          @queue << [message, options]
           @sync_mutex.synchronize {
+            @queue << [message, options]
             options[:sync_resource].wait(@sync_mutex)
           }
         else
