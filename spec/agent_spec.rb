@@ -42,6 +42,12 @@ describe Instrumental::Agent, "disabled" do
     wait
     @server.commands.should be_empty
   end
+
+  it "should no op on an empty flush" do
+    @agent.flush(true)
+    wait
+    @server.commands.should be_empty
+  end
 end
 
 describe Instrumental::Agent, "enabled in test_mode" do
@@ -148,6 +154,12 @@ describe Instrumental::Agent, "enabled in test_mode" do
     wait
     @server.commands.join("\n").should include("increment foo.baz 1 #{tm.to_i}")
     @server.commands.join("\n").should_not include("increment foo.bar 1 #{tm.to_i}")
+  end
+
+  it "should no op on an empty flush" do
+    @agent.flush(true)
+    wait
+    @server.commands.should be_empty
   end
 end
 
@@ -375,6 +387,12 @@ describe Instrumental::Agent, "enabled" do
     @agent.instance_variable_get(:@queue).size.should ==  0
     wait
     @server.commands.grep(/^gauge a /).size.should == 100
+  end
+
+  it "should no op on an empty flush" do
+    @agent.flush(true)
+    wait
+    @server.commands.should be_empty
   end
 end
 

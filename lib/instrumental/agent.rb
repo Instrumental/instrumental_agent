@@ -5,15 +5,22 @@ require 'thread'
 require 'socket'
 
 if RUBY_VERSION < "1.9" && RUBY_PLATFORM != "java"
-  begin
-    gem 'system_timer'
-    require 'system_timer'
-    InstrumentalTimeout = SystemTimer
-  rescue Exception => e
+  timeout_lib = nil
+  ["SystemTimer", "system_timer"].each do |lib|
+    begin
+      unless timeout_lib
+        gem lib
+        require "system_timer"
+        timeout_lib  = SystemTimer
+      end
+    rescue Exception => e
+    end
+  end
+  if !timeout_lib
     puts <<-EOMSG
 WARNING:: You do not currently have system_timer installed.
 It is strongly advised that you install this gem when using
-instrumental_agent with Ruby 1.8.x.  You can install it in 
+instrumental_agent with Ruby 1.8.x.  You can install it in
 your Gemfile via:
 gem 'system_timer'
 or manually via:
@@ -21,6 +28,8 @@ gem install system_timer
     EOMSG
     require 'timeout'
     InstrumentalTimeout = Timeout
+  else
+    InstrumentalTimeout = timeout_lib
   end
 else
   require 'timeout'
@@ -182,7 +191,7 @@ module Instrumental
       queue_message('flush', {
         :synchronous => true,
         :allow_reconnect => allow_reconnect
-      })
+      }) if running?
     end
 
     def enabled?
@@ -201,7 +210,7 @@ module Instrumental
       @logger ||= self.class.logger
     end
 
-    # Stopping the agent will immediately stop all communication 
+    # Stopping the agent will immediately stop all communication
     # to Instrumental.  If you call this and submit another metric,
     # the agent will start again.
     #
