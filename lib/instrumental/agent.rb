@@ -88,14 +88,12 @@ module Instrumental
       # host:        instrumentalapp.com
       # port:        8000
       # enabled:     true
-      # test_mode:   false
       # synchronous: false
       @api_key         = api_key
       @host, @port     = options[:collector].to_s.split(':')
       @host          ||= 'instrumentalapp.com'
       @port            = (@port || 8000).to_i
       @enabled         = options.has_key?(:enabled) ? !!options[:enabled] : true
-      @test_mode       = !!options[:test_mode]
       @synchronous     = !!options[:synchronous]
       @pid             = Process.pid
       @allow_reconnect = true
@@ -360,7 +358,7 @@ module Instrumental
       logger.info "connecting to collector"
       @socket = with_timeout(CONNECT_TIMEOUT) { TCPSocket.new(host, port) }
       logger.info "connected to collector at #{host}:#{port}"
-      send_with_reply_timeout "hello version #{Instrumental::VERSION} test_mode #{@test_mode}"
+      send_with_reply_timeout "hello version #{Instrumental::VERSION} hostname #{Socket.gethostname}"
       send_with_reply_timeout "authenticate #{@api_key}"
       @failures = 0
       loop do

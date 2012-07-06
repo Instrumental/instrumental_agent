@@ -50,119 +50,6 @@ describe Instrumental::Agent, "disabled" do
   end
 end
 
-describe Instrumental::Agent, "enabled in test_mode" do
-  before(:each) do
-    @server = TestServer.new
-    @agent = Instrumental::Agent.new('test_token', :collector => @server.host_and_port, :test_mode => true)
-  end
-
-  after(:each) do
-    @agent.stop
-    @agent = nil
-    @server.stop
-  end
-
-  it "should not connect to the server" do
-    wait
-    @server.connect_count.should == 0
-  end
-
-  it "should connect to the server when the user sends a metric" do
-    @agent.increment("test.foo")
-    wait
-    @server.connect_count.should == 1
-  end
-
-  it "should announce itself, and include version and test_mode flag" do
-    @agent.increment("test.foo")
-    wait
-    @server.commands[0].should =~ /hello .*version .*test_mode true/
-  end
-
-  it "should authenticate using the token" do
-    @agent.increment("test.foo")
-    wait
-    @server.commands[1].should == "authenticate test_token"
-  end
-
-  it "should report a gauge" do
-    now = Time.now
-    @agent.gauge('gauge_test', 123)
-    wait
-    @server.commands.last.should == "gauge gauge_test 123 #{now.to_i}"
-  end
-
-  it "should report a time as gauge and return the block result" do
-    now = Time.now
-    @agent.time("time_value_test") do
-      sleep 0.1
-      1 + 1
-    end.should == 2
-    wait
-    @server.commands.last.should =~ /gauge time_value_test .* #{now.to_i}/
-    time = @server.commands.last.scan(/gauge time_value_test (.*) #{now.to_i}/)[0][0].to_f
-    time.should > 0.1
-  end
-
-  it "should allow a block used in .time to throw an exception and still be timed" do
-    now = Time.now
-    lambda {
-      @agent.time("time_value_test") do
-        sleep 0.1
-        throw :an_exception
-        sleep 1
-      end
-    }.should raise_error
-    wait
-    @server.commands.last.should =~ /gauge time_value_test .* #{now.to_i}/
-    time = @server.commands.last.scan(/gauge time_value_test (.*) #{now.to_i}/)[0][0].to_f
-    time.should > 0.1
-  end
-
-  it "should report a time as a millisecond gauge and return the block result" do
-    now = Time.now
-    @agent.time_ms("time_ms_test") do
-      sleep 0.1
-      1 + 1
-    end.should == 2
-    wait
-    @server.commands.last.should =~ /gauge time_ms_test .* #{now.to_i}/
-    time = @server.commands.last.scan(/gauge time_ms_test (.*) #{now.to_i}/)[0][0].to_f
-    time.should > 100.0
-  end
-
-  it "should report an increment" do
-    now = Time.now
-    @agent.increment("increment_test")
-    wait
-    @server.commands.last.should == "increment increment_test 1 #{now.to_i}"
-  end
-
-  it "should send notices to the server" do
-    tm = Time.now
-    @agent.notice("Test note", tm)
-    wait
-    @server.commands.join("\n").should include("notice #{tm.to_i} 0 Test note")
-  end
-
-  it "should allow outgoing metrics to be stopped" do
-    tm = Time.now
-    @agent.increment("foo.bar", 1, tm)
-    @agent.stop
-    wait
-    @agent.increment("foo.baz", 1, tm)
-    wait
-    @server.commands.join("\n").should include("increment foo.baz 1 #{tm.to_i}")
-    @server.commands.join("\n").should_not include("increment foo.bar 1 #{tm.to_i}")
-  end
-
-  it "should no op on an empty flush" do
-    @agent.flush(true)
-    wait
-    @server.commands.should be_empty
-  end
-end
-
 describe Instrumental::Agent, "enabled" do
   before do
     @server = TestServer.new
@@ -189,7 +76,7 @@ describe Instrumental::Agent, "enabled" do
   it "should announce itself, and include version" do
     @agent.increment("test.foo")
     wait
-    @server.commands[0].should =~ /hello .*version /
+    @server.commands[0].should =~ /hello .*version .* hostname .*/
   end
 
   it "should authenticate using the token" do
