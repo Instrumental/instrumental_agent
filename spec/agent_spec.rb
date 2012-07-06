@@ -450,6 +450,15 @@ describe Instrumental::Agent, "connection problems" do
     end
   end
 
+  it "should send commands in a process that bypasses at_exit when using #cleanup" do
+    @server = TestServer.new
+    @agent = Instrumental::Agent.new('test_token', :collector => @server.host_and_port, :synchronous => false)
+    if pid = fork { @agent.increment('foo', 1, 1234); @agent.cleanup; exit! }
+      Process.wait(pid)
+      @server.commands.last.should == "increment foo 1 1234"
+    end
+  end
+
   it "should not wait longer than EXIT_FLUSH_TIMEOUT seconds to exit a process" do
     @server = TestServer.new
     @agent = Instrumental::Agent.new('test_token', :collector => @server.host_and_port, :synchronous => false)
@@ -461,6 +470,20 @@ describe Instrumental::Agent, "connection problems" do
         diff = Time.now.to_f - tm
         diff.should >= 3
         diff.should < 5
+      end
+    end
+  end
+
+  it "should not wait to exit a process if there are no commands queued" do
+    @server = TestServer.new
+    @agent = Instrumental::Agent.new('test_token', :collector => @server.host_and_port, :synchronous => false)
+    TCPSocket.stub!(:new) { |*args| sleep(5) && StringIO.new }
+    with_constants('Instrumental::Agent::EXIT_FLUSH_TIMEOUT' => 3) do
+      if (pid = fork { @agent.increment('foo', 1); @agent.queue.clear })
+        tm = Time.now.to_f
+        Process.wait(pid)
+        diff = Time.now.to_f - tm
+        diff.should < 1
       end
     end
   end

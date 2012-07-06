@@ -91,9 +91,9 @@ after  "instrumental:util:deploy_end", "instrumental:record_deploy_notice"
 
 ## Tracking metrics in Resque jobs (and Resque-like scenarios)
 
-If you plan on tracking metrics in your Resque jobs, you will need to explicitly flush your metrics when the jobs are finished.  You can accomplish this by adding `after_perform` and `on_failure` hooks to your Resque jobs.  See the Resque [hooks documentation](https://github.com/defunkt/resque/blob/master/docs/HOOKS.md) for more information.
+If you plan on tracking metrics in Resque jobs, you will need to explicitly cleanup after the agent when the jobs are finished.  You can accomplish this by adding `after_perform` and `on_failure` hooks to your Resque jobs.  See the Resque [hooks documentation](https://github.com/defunkt/resque/blob/master/docs/HOOKS.md) for more information.
 
-You're required to do this because Resque calls `exit!` when a worker has finished processing, which bypasses Ruby's `at_exit` hooks.  The Instrumental Agent installs an `at_exit` hook to flush any pending metrics to the servers, but this hook is bypassed by the `exit!` call; any other code you rely that uses `exit!` should call `I.flush` to ensure any pending metrics are correctly sent to the server before exiting the process.
+You're required to do this because Resque calls `exit!` when a worker has finished processing, which bypasses Ruby's `at_exit` hooks.  The Instrumental Agent installs an `at_exit` hook to flush any pending metrics to the servers, but this hook is bypassed by the `exit!` call; any other code you rely that uses `exit!` should call `I.cleanup` to ensure any pending metrics are correctly sent to the server before exiting the process.
 
 ## Using with Ruby Enterprise Edition
 

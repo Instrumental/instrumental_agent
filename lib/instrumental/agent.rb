@@ -227,6 +227,29 @@ module Instrumental
       end
     end
 
+    # Called when a process is exiting to give it some extra time to
+    # push events to the service. An at_exit handler is automatically
+    # registered for this method, but can be called manually in cases
+    # where at_exit is bypassed like Resque workers.
+    def cleanup
+      if running?
+        logger.info "Cleaning up agent, queue size: #{@queue.size}, thread running: #{@thread.alive?}"
+        @allow_reconnect = false
+        if @queue.size > 0
+          queue_message('exit')
+          begin
+            with_timeout(EXIT_FLUSH_TIMEOUT) { @thread.join }
+          rescue Timeout::Error
+            if @queue.size > 0
+              logger.error "Timed out working agent thread on exit, dropping #{@queue.size} metrics"
+            else
+              logger.error "Timed out Instrumental Agent, exiting"
+            end
+          end
+        end
+      end
+    end
+
     private
 
     def with_timeout(time, &block)
@@ -346,7 +369,7 @@ module Instrumental
         test_connection
         case command_and_args
         when 'exit'
-          logger.info "exiting, #{@queue.size} commands remain"
+          logger.info "Exiting, #{@queue.size} commands remain"
           return true
         when 'flush'
           release_resource = true
@@ -386,21 +409,7 @@ module Instrumental
 
     def setup_cleanup_at_exit
       at_exit do
-        if running?
-          logger.info "Cleaning up agent, queue empty: #{@queue.empty?}, thread running: #{@thread.alive?}"
-          @allow_reconnect = false
-          logger.info "exit received, currently #{@queue.size} commands to be sent"
-          queue_message('exit')
-          begin
-            with_timeout(EXIT_FLUSH_TIMEOUT) { @thread.join }
-          rescue Timeout::Error
-            if @queue.size > 0
-              logger.error "Timed out working agent thread on exit, dropping #{@queue.size} metrics"
-            else
-              logger.error "Timed out Instrumental Agent, exiting"
-            end
-          end
-        end
+        cleanup
       end
     end
 
