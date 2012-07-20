@@ -418,7 +418,11 @@ module Instrumental
     def disconnect
       if connected?
         logger.info "Disconnecting..."
-        @socket.flush
+        begin
+          with_timeout(EXIT_FLUSH_TIMEOUT) { @socket.flush }
+        rescue Timeout::Error
+          logger.info "Timed out flushing socket..."
+        end
         @socket.close
       end
       @socket = nil

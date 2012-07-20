@@ -307,6 +307,7 @@ describe Instrumental::Agent, "connection problems" do
     @agent.increment("reconnect_test", 1, 1234)
     wait
     @server.disconnect_all
+    wait
     @agent.increment('reconnect_test', 1, 5678) # triggers reconnect
     wait
     @server.connect_count.should == 2
@@ -384,6 +385,23 @@ describe Instrumental::Agent, "connection problems" do
         diff = Time.now.to_f - tm
         diff.should < 1
       end
+    end
+  end
+
+  it "should not wait longer than EXIT_FLUSH_TIMEOUT to attempt flushing the socket when disconnecting" do
+    @server = TestServer.new
+    @agent = Instrumental::Agent.new('test_token', :collector => @server.host_and_port, :synchronous => false)
+    @agent.increment('foo', 1)
+    wait
+    @agent.instance_variable_get(:@socket).should_receive(:flush).and_return {
+      r, w = IO.pipe
+      IO.select([r]) # mimic an endless blocking select poll
+    }
+    with_constants('Instrumental::Agent::EXIT_FLUSH_TIMEOUT' => 3) do
+      tm = Time.now.to_f
+      @agent.cleanup
+      diff = Time.now.to_f - tm
+      diff.should <= 3
     end
   end
 end
