@@ -76,7 +76,7 @@ describe Instrumental::Agent, "enabled" do
   it "should announce itself, and include version" do
     @agent.increment("test.foo")
     wait
-    @server.commands[0].should =~ /hello .*version .* hostname .*/
+    @server.commands[0].should =~ /hello .*version .* hostname .* pid .*/
   end
 
   it "should authenticate using the token" do
@@ -338,6 +338,21 @@ describe Instrumental::Agent, "connection problems" do
     @agent.increment('reconnect_test', 1, 1234)
     wait
     @agent.queue.pop(true).should include("increment reconnect_test 1 1234 1\n")
+  end
+
+  it "should warn once when buffer is full" do
+    with_constants('Instrumental::Agent::MAX_BUFFER' => 3) do
+      @server = TestServer.new(:listen => false)
+      @agent = Instrumental::Agent.new('test_token', :collector => @server.host_and_port, :synchronous => false)
+      wait
+      @agent.logger.should_receive(:warn).with(/Queue full/).once
+
+      @agent.increment('buffer_full_warn_test', 1, 1234)
+      @agent.increment('buffer_full_warn_test', 1, 1234)
+      @agent.increment('buffer_full_warn_test', 1, 1234)
+      @agent.increment('buffer_full_warn_test', 1, 1234)
+      @agent.increment('buffer_full_warn_test', 1, 1234)
+    end
   end
 
   it "should send commands in a short-lived process" do

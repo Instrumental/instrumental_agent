@@ -1,45 +1,10 @@
-require 'instrumental/rack/middleware'
 require 'instrumental/version'
+require 'instrumental/system_timer'
 require 'logger'
 require 'thread'
 require 'socket'
 
-if RUBY_VERSION < "1.9" && RUBY_PLATFORM != "java"
-  timeout_lib = nil
-  ["SystemTimer", "system_timer"].each do |lib|
-    begin
-      unless timeout_lib
-        gem lib
-        require "system_timer"
-        timeout_lib  = SystemTimer
-      end
-    rescue Exception => e
-    end
-  end
-  if !timeout_lib
-    puts <<-EOMSG
-WARNING:: You do not currently have system_timer installed.
-It is strongly advised that you install this gem when using
-instrumental_agent with Ruby 1.8.x.  You can install it in
-your Gemfile via:
-gem 'system_timer'
-or manually via:
-gem install system_timer
-    EOMSG
-    require 'timeout'
-    InstrumentalTimeout = Timeout
-  else
-    InstrumentalTimeout = timeout_lib
-  end
-else
-  require 'timeout'
-  InstrumentalTimeout = Timeout
-end
 
-
-# Sets up a connection to the collector.
-#
-#  Instrumental::Agent.new(API_KEY)
 module Instrumental
   class Agent
     BACKOFF = 2.0
@@ -62,16 +27,6 @@ module Instrumental
         @logger.level = Logger::WARN
       end
       @logger
-    end
-
-    def self.all
-      @agents ||= []
-    end
-
-    def self.new(*args)
-      inst = super
-      all << inst
-      inst
     end
 
     # Sets up a connection to the collector.
@@ -205,7 +160,7 @@ module Instrumental
     end
 
     def logger
-      @logger ||= self.class.logger
+      @logger || self.class.logger
     end
 
     # Stopping the agent will immediately stop all communication
@@ -290,10 +245,15 @@ module Instrumental
 
         cmd = "%s %s\n" % [cmd, args.collect { |a| a.to_s }.join(" ")]
         if @queue.size < MAX_BUFFER
+          @queue_full_warning = false
           logger.debug "Queueing: #{cmd.chomp}"
           queue_message(cmd, { :synchronous => @synchronous })
         else
-          logger.warn "Dropping command, queue full(#{@queue.size}): #{cmd.chomp}"
+          if !@queue_full_warning
+            @queue_full_warning = true
+            logger.warn "Queue full(#{@queue.size}), dropping commands..."
+          end
+          logger.debug "Dropping command, queue full(#{@queue.size}): #{cmd.chomp}"
           nil
         end
       end
@@ -320,9 +280,8 @@ module Instrumental
     end
 
     def test_connection
-      # FIXME: Test connection state hack
       begin
-        @socket.read_nonblock(1) # TODO: put data back?
+        @socket.read_nonblock(1)
       rescue Errno::EAGAIN
         # noop
       end
@@ -358,7 +317,7 @@ module Instrumental
       logger.info "connecting to collector"
       @socket = with_timeout(CONNECT_TIMEOUT) { TCPSocket.new(host, port) }
       logger.info "connected to collector at #{host}:#{port}"
-      send_with_reply_timeout "hello version #{Instrumental::VERSION} hostname #{Socket.gethostname}"
+      send_with_reply_timeout "hello version #{Instrumental::VERSION} hostname #{Socket.gethostname} pid #{Process.pid}"
       send_with_reply_timeout "authenticate #{@api_key}"
       @failures = 0
       loop do
