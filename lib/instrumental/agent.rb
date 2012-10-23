@@ -235,8 +235,7 @@ module Instrumental
     end
 
     def report_exception(e)
-      logger.error "Exception occurred: #{e.message}"
-      logger.error e.backtrace.join("\n")
+      logger.error "Exception occurred: #{e.message}\n#{e.backtrace.join("\n")}"
     end
 
     def send_command(cmd, *args)
@@ -343,11 +342,16 @@ module Instrumental
         end
       end
     rescue Exception => err
-      logger.error "Instrumental Error: #{err}"
-      logger.error err.backtrace.join("\n")
+      if err.is_a?(EOFError)
+        # nop
+      elsif err.is_a?(Errno::ECONNREFUSED)
+        logger.error "unable to connect to Instrumental."
+      else
+        report_exception(err)
+      end
       if @allow_reconnect == false ||
         (command_options && command_options[:allow_reconnect] == false)
-        logger.error "Not trying to reconnect"
+        logger.info "Not trying to reconnect"
         return
       end
       if command_and_args
