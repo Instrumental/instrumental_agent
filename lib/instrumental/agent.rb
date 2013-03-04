@@ -239,10 +239,10 @@ module Instrumental
     end
 
     def send_command(cmd, *args)
+      cmd = "%s %s\n" % [cmd, args.collect { |a| a.to_s }.join(" ")]
       if enabled?
         start_connection_worker if !running?
 
-        cmd = "%s %s\n" % [cmd, args.collect { |a| a.to_s }.join(" ")]
         if @queue.size < MAX_BUFFER
           @queue_full_warning = false
           logger.debug "Queueing: #{cmd.chomp}"
@@ -255,6 +255,8 @@ module Instrumental
           logger.debug "Dropping command, queue full(#{@queue.size}): #{cmd.chomp}"
           nil
         end
+      else
+        logger.debug cmd.strip
       end
     end
 

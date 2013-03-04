@@ -48,6 +48,12 @@ describe Instrumental::Agent, "disabled" do
     wait
     @server.commands.should be_empty
   end
+
+  it "should send metrics to logger" do
+    now = Time.now
+    @agent.logger.should_receive(:debug).with("gauge metric 1 #{now.to_i} 1")
+    @agent.gauge("metric", 1)
+  end
 end
 
 describe Instrumental::Agent, "enabled" do
