@@ -1,3 +1,6 @@
+### 3.0.0 [August 23, 2019]
+* Update ffi gem and setup script
+
 ### 3.0.0.alpha [August 22, 2019]
 * Drop support for outdated versions of Ruby
 * Explicitly add support for new versions of Ruby

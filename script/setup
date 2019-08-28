@@ -7,6 +7,11 @@ rbenv which ruby >/dev/null 2>&1 || (brew upgrade ruby-build || true; rbenv inst
 # Setup rbenv so we can switch rubies below
 eval "$(rbenv init - --no-rehash)"
 
+# make sure FFI is fresh and appropriate flags are set to build native extensions
+brew reinstall libffi
+export LDFLAGS="-L/usr/local/opt/libffi/lib"
+export PKG_CONFIG_PATH="/usr/local/opt/libffi/lib/pkgconfig"
+
 for ruby_version in `ruby -ryaml -e 'puts YAML.load(File.read(".travis.yml"))["rvm"].join(" ")'`; do
   rbenv versions --bare | grep "^${ruby_version}$" || rbenv install $ruby_version
   rbenv shell $ruby_version
